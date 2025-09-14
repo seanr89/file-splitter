@@ -1,7 +1,6 @@
-
-const AWS = require('aws-sdk');
+const { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, CopyObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const csv = require('csv-parser');
-const s3 = new AWS.S3();
+const s3 = new S3Client({});
 
 exports.handler = async (event) => {
   const bucket = 'splitterbucket';
@@ -15,7 +14,7 @@ exports.handler = async (event) => {
   };
 
   try {
-    const listedObjects = await s3.listObjectsV2(listParams).promise();
+    const listedObjects = await s3.send(new ListObjectsV2Command(listParams));
 
     if (!listedObjects.Contents || listedObjects.Contents.length === 0) {
       console.log('Inbox is empty. Nothing to process.');
@@ -29,7 +28,8 @@ exports.handler = async (event) => {
       const records = [];
       let header = '';
 
-      const s3Stream = s3.getObject({ Bucket: bucket, Key: key }).createReadStream();
+      const getObjectCommand = new GetObjectCommand({ Bucket: bucket, Key: key });
+      const s3Stream = (await s3.send(getObjectCommand)).Body;
 
       await new Promise((resolve, reject) => {
         s3Stream
@@ -54,7 +54,7 @@ exports.handler = async (event) => {
               };
 
               try {
-                await s3.putObject(uploadParams).promise();
+                await s3.send(new PutObjectCommand(uploadParams));
                 console.log(`Successfully uploaded ${newKey}`);
               } catch (err) {
                 console.error(`Error uploading ${newKey}:`, err);
@@ -71,8 +71,8 @@ exports.handler = async (event) => {
             };
 
             try {
-              await s3.copyObject(copyParams).promise();
-              await s3.deleteObject({ Bucket: bucket, Key: key }).promise();
+              await s3.send(new CopyObjectCommand(copyParams));
+              await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
               console.log(`Successfully moved ${key} to ${destKey}`);
             } catch (err) {
               console.error(`Error moving ${key}:`, err);
